@@ -14,9 +14,6 @@ unikraft:
     - CONFIG_LIBVFSCORE_ROOTDEV="fs0"
     - CONFIG_LIBUKMMAP=y
     - CONFIG_LIBPOSIX_SYSINFO=y
-    - CONFIG_VIRTIO_BUS=y
-    - CONFIG_VIRTIO_PCI=y
-    - CONFIG_VIRTIO_9P=y
 targets:
   - architecture: x86_64
     platform: kvm
