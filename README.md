@@ -3,6 +3,56 @@
 This application starts an Httpreply web server with Unikraft.
 Follow the instructions below to set up, configure, build and run Httpreply.
 
+## Quick Setup (aka TLDR)
+
+For a quick setup, run the commands below.
+Note that you still need to install the [requirements](#requirements).
+
+For building and running everything for `x86_64`, follow the steps below:
+
+```console
+git clone https://github.com/unikraft/app-httpreply httpreply
+cd httpreply/
+mkdir .unikraft
+git clone https://github.com/unikraft/unikraft .unikraft/unikraft
+git clone https://github.com/unikraft/lib-lwip .unikraft/libs/lwip
+UK_DEFCONFIG=$(pwd)/.config.httpreply_qemu-x86_64 make defconfig
+make -j $(nproc)
+sudo ip link set dev virbr0 down 2> /dev/null
+sudo ip link del dev virbr0 2> /dev/null
+sudo ip link add dev virbr0 type bridge
+sudo ip address add 172.44.0.1/24 dev virbr0
+sudo ip link set dev virbr0 up
+sudo /usr/bin/qemu-system-x86_64 \
+    -fsdev local,id=myid,path=$(pwd)/fs0,security_model=none \
+    -device virtio-9p-pci,fsdev=myid,mount_tag=fs0,disable-modern=on,disable-legacy=off \
+    -netdev bridge,id=en0,br=virbr0 -device virtio-net-pci,netdev=en0 \
+    -append "netdev.ipv4_addr=172.44.0.2 netdev.ipv4_gw_addr=172.44.0.1 netdev.ipv4_subnet_mask=255.255.255.0 --" \
+    -kernel build/httpreply_qemu-x86_64 \
+    -nographic
+```
+
+This will configure, build and run the `httpreply` application.
+You can see how to test it in the [running section](#run).
+
+The same can be done for `AArch64`, by running the commands below:
+
+```console
+make properclean
+UK_DEFCONFIG=$(pwd)/.config.httpreply_qemu-arm64 make defconfig
+make -j $(nproc)
+sudo /usr/bin/qemu-system-aarch64 \
+    -fsdev local,id=myid,path=$(pwd)/fs0,security_model=none \
+    -device virtio-9p-pci,fsdev=myid,mount_tag=fs0,disable-modern=on,disable-legacy=off \
+    -netdev bridge,id=en0,br=virbr0 -device virtio-net-pci,netdev=en0 \
+    -append "netdev.ipv4_addr=172.44.0.2 netdev.ipv4_gw_addr=172.44.0.1 netdev.ipv4_subnet_mask=255.255.255.0 --" \
+    -kernel build/httpreply_qemu-arm64 -nographic \
+    -machine virt -cpu cortex-a57
+```
+
+Similar to the `x86_64` build, this will start the `httpreply` server.
+Information about every step is detailed below.
+
 ## Requirements
 
 In order to set up, configure, build and run Httpreply on Unikraft, the following packages are required:
@@ -25,7 +75,7 @@ GCC >= 8 is required to build Httpreply on Unikraft.
 On Ubuntu/Debian or other `apt`-based distributions, run the following command to install the requirements:
 
 ```console
-$ sudo apt install -y --no-install-recommends \
+sudo apt install -y --no-install-recommends \
   build-essential \
   sudo \
   gcc-aarch64-linux-gnu \
@@ -47,8 +97,8 @@ For this to work properly a specific configuration must be enabled for QEMU.
 Run the commands below to enable that configuration (for the network bridge to work):
 
 ```console
-$ sudo mkdir /etc/qemu/
-$ echo "allow all" | sudo tee /etc/qemu/bridge.conf
+sudo mkdir /etc/qemu/
+echo "allow all" | sudo tee /etc/qemu/bridge.conf
 ```
 
 ## Set Up
@@ -65,59 +115,69 @@ Follow the steps below for the setup:
   1. First clone the [`app-httpreply` repository](https://github.com/unikraft/app-httpreply) in the `httpreply/` directory:
 
      ```console
-     $ git clone https://github.com/unikraft/app-httpreply httpreply
+     git clone https://github.com/unikraft/app-httpreply httpreply
      ```
 
      Enter the `httpreply/` directory:
 
      ```console
-     $ cd httpreply/
+     cd httpreply/
 
-     $ ls -F
-     config-qemu-aarch64  config-qemu-x86_64  fs0/  kraft.yaml  Makefile  Makefile.uk  README.md  run-qemu-aarch64.sh*  run-qemu-x86_64.sh*
+     ls -F
+     ```
+
+     This will print the contents of the repository:
+
+     ```text
+     .config.httpreply_qemu-arm64  .config.httpreply_qemu-x86_64  fs0/  kraft.yaml  Makefile  Makefile.uk  README.md
      ```
 
   1. While inside the `httpreply/` directory, create the `.unikraft/` directory:
 
      ```console
-     $ mkdir .unikraft
+     mkdir .unikraft
      ```
 
      Enter the `.unikraft/` directory:
 
      ```console
-     $ cd .unikraft/
+     cd .unikraft/
      ```
 
   1. While inside the `.unikraft` directory, clone the [`unikraft` repository](https://github.com/unikraft/unikraft):
 
      ```console
-     $ git clone https://github.com/unikraft/unikraft unikraft
+     git clone https://github.com/unikraft/unikraft unikraft
      ```
 
   1. While inside the `.unikraft/` directory, create the `libs/` directory:
 
      ```console
-     $ mkdir libs
+     mkdir libs
      ```
 
   1. While inside the `.unikraft/` directory, clone the library repositories in the `libs/` directory:
 
      ```console
-     $ git clone https://github.com/unikraft/lib-lwip libs/lwip
+     git clone https://github.com/unikraft/lib-lwip libs/lwip
      ```
 
   1. Get back to the application directory:
 
      ```console
-     $ cd ../
+     cd ../
      ```
 
      Use the `tree` command to inspect the contents of the `.unikraft/` directory.
      It should print something like this:
 
      ```console
-     $ tree -F -L 2 .unikraft/
+     tree -F -L 2 .unikraft/
+     ```
+
+     The layout of the `.unikraft/` directory should look something like this:
+
+     ```text
      .unikraft/
      |-- libs/
      |   `-- lwip/
@@ -150,16 +210,15 @@ Use the corresponding the configuration files (`config-...`), according to your 
 
 ### QEMU x86_64
 
-Use the `config-qemu-x86_64` configuration file together with `make defconfig` to create the configuration file:
+Use the `.config.httpreply_qemu-x86_64` configuration file together with `make defconfig` to create the configuration file:
 
 ```console
-$ UK_DEFCONFIG=$(pwd)/config-qemu-x86_64 make defconfig
 ```
 
 This results in the creation of the `.config` file:
 
 ```console
-$ ls .config
+ls .config
 .config
 ```
 
@@ -167,10 +226,10 @@ The `.config` file will be used in the build step.
 
 ### QEMU AArch64
 
-Use the `config-qemu-aarch64` configuration file together with `make defconfig` to create the configuration file:
+Use the `.config.httpreply_qemu-arm64` configuration file together with `make defconfig` to create the configuration file:
 
 ```console
-$ UK_DEFCONFIG=$(pwd)/config-qemu-aarch64 make defconfig
+UK_DEFCONFIG=$(pwd)/.config.httpreply_qemu-arm64 make defconfig
 ```
 
 Similar to the x86_64 configuration, this results in the creation of the `.config` file that will be used in the build step.
@@ -199,7 +258,12 @@ Building for QEMU x86_64 assumes you did the QEMU x86_64 configuration step abov
 Build the Unikraft Httpreply image for QEMU x86_64 by using the command below:
 
 ```console
-$ make -j $(nproc)
+make -j $(nproc)
+```
+
+This will print a list of files that are generated by the build system.
+
+```text
 [...]
   LD      httpreply_qemu-x86_64.dbg
   UKBI    httpreply_qemu-x86_64.dbg.bootinfo
@@ -225,7 +289,12 @@ Building for QEMU AArch64 assumes you did the QEMU AArch64 configuration step ab
 Build the Unikraft Httpreply image for QEMU AArch64 by using the same command as for x86_64:
 
 ```console
-$ make -j $(nproc)
+make -j $(nproc)
+```
+
+This will print a list of files that are generated by the build system.
+
+```text
 [...]
   LD      httpreply_qemu-arm64.dbg
   UKBI    httpreply_qemu-arm64.dbg.bootinfo
@@ -239,14 +308,33 @@ This image is to be used in the run step.
 
 ## Run
 
-Run the resulting image with the `run-...` scripts.
+Run the resulting image with the `qemu-system-*` commands.
+In order to run `nginx` you need to first set up a network bridge.
+You can do that by running the following commands:
+
+```console
+sudo ip link set dev virbr0 down 2> /dev/null
+sudo ip link del dev virbr0 2> /dev/null
+sudo ip link add dev virbr0 type bridge
+sudo ip address add 172.44.0.1/24 dev virbr0
+sudo ip link set dev virbr0 up
+```
 
 ### QEMU x86_64
 
-To run the QEMU x86_64 build, use `run-qemu-x86_64.sh`:
+To run the QEMU x86_64 build, use `qemu-system-x86_64`:
 
 ```console
-$ ./run-qemu-x86_64.sh
+sudo /usr/bin/qemu-system-x86_64 \
+    -netdev bridge,id=en0,br=virbr0 -device virtio-net-pci,netdev=en0 \
+    -append "netdev.ipv4_addr=172.44.0.2 netdev.ipv4_gw_addr=172.44.0.1 netdev.ipv4_subnet_mask=255.255.255.0 --" \
+    -kernel build/httpreply_qemu-x86_64 \
+    -nographic
+```
+
+This will start the `httpreply` application:
+
+```text
 1: Set IPv4 address 172.44.0.2 mask 255.255.255.0 gw 172.44.0.1
 en1: Added
 en1: Interface is up
@@ -266,7 +354,12 @@ A web client (such as `wget`) is required to query the server.
 Open another console and use the `wget` command below to query the server:
 
 ```console
-$ wget 172.44.0.2:8123
+wget 172.44.0.2:8123
+```
+
+This will download [the `html` response](https://github.com/unikraft/app-httpreply/blob/staging/main.c#L42-L50) that the application sends:
+
+```text
 --2023-07-03 08:38:20--  http://172.44.0.2:8123/
 Connecting to 172.44.0.2:8123... connected.
 HTTP request sent, awaiting response... 200 OK
@@ -283,10 +376,19 @@ that is press the `Ctrl` and `a` keys at the same time and then, separately, pre
 
 ### QEMU AArch64
 
-To run the AArch64 build, use `run-qemu-aarch64.sh`:
+To run the AArch64 build, use `qemu-system-aarch64`:
 
 ```console
-$ ./run-qemu-aarch64.sh
+sudo /usr/bin/qemu-system-aarch64 \
+    -netdev bridge,id=en0,br=virbr0 -device virtio-net-pci,netdev=en0 \
+    -append "netdev.ipv4_addr=172.44.0.2 netdev.ipv4_gw_addr=172.44.0.1 netdev.ipv4_subnet_mask=255.255.255.0 --" \
+    -kernel build/httpreply_qemu-arm64 -nographic \
+    -machine virt -cpu cortex-a57
+```
+
+Similar to running for x86_64, this will start the `httpreply` application:
+
+```text
 1: Set IPv4 address 172.44.0.2 mask 255.255.255.0 gw 172.44.0.1
 en1: Added
 en1: Interface is up
@@ -303,7 +405,12 @@ Listening on port 8123...
 Open another console and use the `wget` command, similar to the QEMU x86_64 run above:
 
 ```console
-$ wget 172.44.0.2:8123
+wget 172.44.0.2:8123
+```
+
+This will download [the `html` response](https://github.com/unikraft/app-httpreply/blob/staging/main.c#L42-L50) that the application sends:
+
+```text
 --2023-07-03 08:38:20--  http://172.44.0.2:8123/
 Connecting to 172.44.0.2:8123... connected.
 HTTP request sent, awaiting response... 200 OK
